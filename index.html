@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Number OCR Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tesseract.js for browser-based OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .loader {
+            border-top-color: #3b82f6;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8 flex justify-center items-start">
+
+    <div class="max-w-3xl w-full mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2 mb-8">
+            <h1 class="text-3xl font-bold text-slate-800 flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                Phone OCR Extractor
+            </h1>
+            <p class="text-slate-500 text-sm">Automatically extracts numbers, ignores Admins, strips +91, and formats for one-click copying.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Upload Column -->
+            <div class="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+                <h2 class="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                    Upload Media
+                </h2>
+                
+                <!-- Dropzone -->
+                <div id="dropzone" class="flex-1 flex flex-col items-center justify-center w-full min-h-[250px] border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors cursor-pointer relative overflow-hidden group">
+                    <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    
+                    <div id="uploadPlaceholder" class="flex flex-col items-center p-6 text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-400 mb-3 group-hover:text-blue-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        <p class="text-sm font-medium text-slate-600">Click or drag image here</p>
+                        <p class="text-xs text-slate-400 mt-1">Supports JPG, PNG, WEBP</p>
+                    </div>
+
+                    <!-- Image Preview -->
+                    <img id="imagePreview" class="absolute inset-0 w-full h-full object-contain hidden bg-slate-900/5 p-2" />
+                </div>
+
+                <!-- Processing Overlay -->
+                <div id="processingUI" class="hidden mt-4 bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="loader border-4 border-blue-200 rounded-full w-5 h-5"></div>
+                        <span class="text-sm font-medium text-blue-800" id="statusText">Reading image...</span>
+                    </div>
+                    <div class="w-full bg-blue-200 rounded-full h-2">
+                        <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Column -->
+            <div class="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-700 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Extracted Data
+                    </h2>
+                    <span id="countBadge" class="hidden bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-md">0 found</span>
+                </div>
+
+                <textarea id="outputArea" readonly placeholder="Numbers will appear here as a clean list..." class="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow min-h-[200px]"></textarea>
+
+                <button id="copyBtn" disabled class="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:scale-110 transition-transform"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span id="copyText">Copy List</span>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Rules Refresher -->
+        <div class="text-xs text-slate-400 text-center flex justify-center gap-4 flex-wrap">
+            <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Ignores 'Admin' labels</span>
+            <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Strips +91 prefix</span>
+            <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Removes spaces & hyphens</span>
+        </div>
+
+    </div>
+
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const dropzone = document.getElementById('dropzone');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+        const imagePreview = document.getElementById('imagePreview');
+        const processingUI = document.getElementById('processingUI');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const outputArea = document.getElementById('outputArea');
+        const copyBtn = document.getElementById('copyBtn');
+        const copyText = document.getElementById('copyText');
+        const countBadge = document.getElementById('countBadge');
+
+        // Event Listeners for File Selection
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and Drop Visual Cues
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => dropzone.classList.add('border-blue-500', 'bg-blue-50'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => dropzone.classList.remove('border-blue-500', 'bg-blue-50'), false);
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+            if (files.length > 0) {
+                fileInput.files = files; // Update input
+                handleFile(files[0]);
+            }
+        });
+
+        // Process the Image File
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Please upload an image file.');
+                return;
+            }
+
+            // Show Preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.classList.remove('hidden');
+                uploadPlaceholder.classList.add('hidden');
+            }
+            reader.readAsDataURL(file);
+
+            // Reset UI
+            outputArea.value = '';
+            copyBtn.disabled = true;
+            countBadge.classList.add('hidden');
+            
+            // Start OCR
+            performOCR(file);
+        }
+
+        // Tesseract.js OCR Execution
+        async function performOCR(imageFile) {
+            processingUI.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            
+            try {
+                const worker = await Tesseract.createWorker({
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            progressBar.style.width = `${progress}%`;
+                            statusText.innerText = `Analyzing image... ${progress}%`;
+                        } else {
+                            statusText.innerText = m.status;
+                        }
+                    }
+                });
+
+                await worker.loadLanguage('eng');
+                await worker.initialize('eng');
+                const { data: { text } } = await worker.recognize(imageFile);
+                await worker.terminate();
+
+                // Process the raw text based on user rules
+                processExtractedText(text);
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Error reading image!";
+                progressBar.classList.add('bg-red-500');
+            } finally {
+                setTimeout(() => {
+                    processingUI.classList.add('hidden');
+                }, 1000);
+            }
+        }
+
+        // --- CORE LOGIC: IMPLEMENTING YOUR RULES ---
+        function processExtractedText(rawText) {
+            const lines = rawText.split('\n');
+            let finalNumbers = [];
+
+            // Regex to catch potential phone numbers (digits, spaces, hyphens, parens, plus signs)
+            // Minimum 7 digits required to be considered a potential phone number
+            const potentialPhoneRegex = /(?:\+\d{1,4}[\s-]?)?(?:\(\d{1,5}\)[\s-]?)?(?:\d[\s-]?){6,15}\d/g;
+
+            lines.forEach(line => {
+                // RULE 2: Exclude Admins (Case insensitive check)
+                if (line.toLowerCase().includes('admin')) {
+                    return; // Skip this line entirely
+                }
+
+                const matches = line.match(potentialPhoneRegex);
+                
+                if (matches) {
+                    matches.forEach(match => {
+                        // RULE 4: Remove all spaces, hyphens, parentheses, special characters
+                        // Keep only digits and the '+' sign
+                        let cleaned = match.replace(/[^\d+]/g, '');
+
+                        // Extra sanity check: ensure it has at least 7 actual digits
+                        const digitCount = (cleaned.match(/\d/g) || []).length;
+                        if (digitCount < 7) return;
+
+                        // RULE 3a: If number starts with +91, remove the "+91" prefix
+                        if (cleaned.startsWith('+91')) {
+                            cleaned = cleaned.substring(3);
+                        }
+                        
+                        // RULE 3b: If number has any other country code, keep it (already handled by not removing it)
+                        
+                        // Fix edge cases where an internal plus sign might exist due to bad OCR
+                        // Keep '+' only if it's the very first character
+                        if (cleaned.indexOf('+') > 0) {
+                           cleaned = cleaned.replace(/\+/g, ''); 
+                        }
+
+                        if (cleaned.length > 0) {
+                            finalNumbers.push(cleaned);
+                        }
+                    });
+                }
+            });
+
+            // Optional: Remove duplicate numbers for a cleaner list
+            finalNumbers = [...new Set(finalNumbers)];
+
+            // RULE 5 & 6: Output style - plain list, separated by new line, no bullets/text
+            const resultText = finalNumbers.join('\n');
+            
+            outputArea.value = resultText;
+            
+            // Update UI
+            if (finalNumbers.length > 0) {
+                copyBtn.disabled = false;
+                countBadge.innerText = `${finalNumbers.length} found`;
+                countBadge.classList.remove('hidden');
+            } else {
+                outputArea.value = "No valid phone numbers found (or all were Admins).";
+            }
+        }
+
+        // Copy to Clipboard Functionality
+        copyBtn.addEventListener('click', async () => {
+            const textToCopy = outputArea.value;
+            if (!textToCopy) return;
+
+            try {
+                // Modern Clipboard API
+                await navigator.clipboard.writeText(textToCopy);
+                triggerCopySuccess();
+            } catch (err) {
+                // Fallback for older browsers/iframes
+                outputArea.select();
+                document.execCommand('copy');
+                window.getSelection().removeAllRanges();
+                triggerCopySuccess();
+            }
+        });
+
+        function triggerCopySuccess() {
+            const originalHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Copied!</span>
+            `;
+            copyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            copyBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            
+            setTimeout(() => {
+                copyBtn.innerHTML = originalHTML;
+                copyBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                copyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
